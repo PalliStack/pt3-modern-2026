@@ -2,20 +2,20 @@
 
 **Integrating Ubuntu 22.04 + Dual PT3 Cards (8 Tuners) + mirakc + EPGStation + KonomiTV.**
 
-*Modernized for 2026 standards by **PalliStack**.*
+*Modernized & Bug-Fixed for 2026 standards by **PalliStack**.*
 
 ## 🌟 Key Modernization Features (主な現代化機能)
 
 ### 🇬🇧 English
 - **Refactored PT3 Driver:** Migrated to `dma_alloc_coherent` for high-speed, stable memory management.
-- **Kernel 6.x Support:** Fully compatible with latest Ubuntu 22.04/24.04 kernels.
-- **Structured Logging:** Switched from `printk` to `dev_info` for easier multi-device debugging.
-- **Secure IOCTL:** Implemented `access_ok` checks for hardened kernel-user communication.
+- **Multi-Card Bug Fix:** Resolved issues where `/dev/pt3video*` nodes were not created in multi-card environments.
+- **New Parameter (`card_number`):** Added support for manual device index offsets.
+- **DMA Stability:** Enhanced logic to handle memory fragmentation during driver load.
 
 ### 🇯🇵 日本語
 - **リファクタリングされたPT3ドライバ:** 高速で安定したメモリ管理のために`dma_alloc_coherent`へ移行。
-- **カーネル 6.x 対応:** 最新のUbuntu 22.04/24.04カーネルと完全な互換性を確保。\n- **構造化ロギング:** 複数デバイスのデバッグを容易にするため、`printk`から`dev_info`へ刷新。
-- **セキュアIOCTL:** カーネル・ユーザー間の通信保護のため、`access_ok`チェックを実装。
+- **マルチカードバグ修正:** 複数枚のカード環境で`/dev/pt3video*`ノードが作成されない問題を解決。\n- **新パラメータ (`card_number`):** デバイスインデックスのオフセットを手動で指定する機能を追加。
+- **DMA安定性の向上:** ドライバロード時のメモリ断片化（フラグメンテーション）に対する安定性を強化。
 
 ## 🏗️ Architecture Design (アーキテクチャ設計)
 
@@ -81,13 +81,6 @@ sudo modprobe pt3_drv
 ls -l /dev/pt3video*
 dmesg | grep PT3
 ```
-
-## 🛠️ Bug Fixes & Improvements (バグ修正と改善)
-
-- **Fixed Device Node Creation:** Resolved issues where `/dev/pt3video*` nodes were not automatically created in multi-card environments.
-- **Added `card_number` Parameter:** Enabled manual indexing offset for flexible device management.
-- **Robust Resource Cleanup:** Fixed a logic bug that prevented cleaning up device slots upon failed hardware probes.
-- **Improved DMA Stability:** Optimized buffer allocation logic to better handle contiguous memory fragmentation.
 
 ## 📜 Acknowledgments
 This project is a **modernized fork** of the original [m-tsudo/pt3](https://github.com/m-tsudo/pt3). 
