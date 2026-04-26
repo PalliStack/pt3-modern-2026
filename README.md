@@ -82,6 +82,19 @@ ls -l /dev/pt3video*
 dmesg | grep PT3
 ```
 
+## 🔧 Troubleshooting (トラブルシューティング)
+
+### DMA Allocation Failure (DMA割当失敗)
+If the driver loads but not all tuners are visible (e.g., only 4 instead of 8), it is likely due to **contiguous memory fragmentation**.
+- **Symptoms:** `dmesg` shows `fail allocate consistent`.
+- **Solution:** Clear the kernel page cache to free up contiguous physical memory:
+  ```bash
+  sudo sync
+  sudo sh -c "echo 3 > /proc/sys/vm/drop_caches"
+  sudo modprobe -r pt3_drv
+  sudo modprobe pt3_drv
+  ```
+
 ## 📜 Acknowledgments
 This project is a **modernized fork** of the original [m-tsudo/pt3](https://github.com/m-tsudo/pt3). 
 
