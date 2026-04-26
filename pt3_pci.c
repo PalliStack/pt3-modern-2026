@@ -871,7 +871,7 @@ static const struct file_operations pt3_fops = {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6,12,0)
 	.llseek	= no_llseek,
 #else
-	.llseek = NULL,
+	.llseek = no_llseek,
 #endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36)
 	.ioctl		=	pt3_ioctl,
@@ -933,7 +933,7 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (!dev_conf->hw_addr[1])
 		goto out_err_fpga;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,18,0)
-	rc = dma_set_mask(NULL, DMA_BIT_MASK(64));
+	rc = dma_set_mask(&pdev->dev, DMA_BIT_MASK(64));
 #else
 	rc = pci_set_dma_mask(pdev, DMA_BIT_MASK(64));
 #endif
