@@ -122,8 +122,7 @@ static	DEFINE_MUTEX(pt3_biglock);
 
 #define DRV_CLASS	"ptx"
 #define DEV_NAME	"pt3video"
-#define MAX_PCI_DEVICE 128		// 最大64枚
-
+#define MAX_PCI_DEVICE 128		// ?��?4??
 typedef struct _PT3_VERSION {
 	__u8		ptn;
 	__u8 		regs;
@@ -919,13 +918,13 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	dev_conf = kzalloc(sizeof(PT3_DEVICE), GFP_KERNEL);
 	if(!dev_conf){
-		dev_err(&pdev->dev, "PT3: out of memory!\n");
+		dev_err(NULL, "PT3: out of memory!\n");
 		goto out_err_reg;
 	}
 	dev_conf->pdev = pdev;
-	PT3_PRINTK(&pdev->dev, 7, KERN_DEBUG, "Allocate PT3_DEVICE.\n");
+	PT3_PRINTK(NULL, 7, KERN_DEBUG, "Allocate PT3_DEVICE.\n");
 
-	// PCIアドレスをマップする
+	// PCI?�ド?�ス?�マ?�プ?�る
 	dev_conf->bars = bars;
 	dev_conf->hw_addr[0] = pci_ioremap_bar(pdev, 0);
 	if (!dev_conf->hw_addr[0])
@@ -934,13 +933,13 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (!dev_conf->hw_addr[1])
 		goto out_err_fpga;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,18,0)
-	rc = dma_set_mask(&pdev->dev, DMA_BIT_MASK(64));
+	rc = dma_set_mask(NULL, DMA_BIT_MASK(64));
 #else
 	rc = pci_set_dma_mask(pdev, DMA_BIT_MASK(64));
 #endif
 	if (!rc) {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,18,0)
-		rc = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(64));
+		rc = dma_set_coherent_mask(NULL, DMA_BIT_MASK(64));
 #else
 		rc = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(64));
 #endif
@@ -954,12 +953,12 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto out_err_fpga;
 	}
 	mutex_init(&dev_conf->lock);
-	dev_conf->i2c = create_pt3_i2c(&pdev->dev, dev_conf->hw_addr);
+	dev_conf->i2c = create_pt3_i2c(NULL, dev_conf->hw_addr);
 	if (dev_conf->i2c == NULL) {
-		dev_err(&pdev->dev, "PT3: cannot allocate i2c.\n");
+		dev_err(NULL, "PT3: cannot allocate i2c.\n");
 		goto out_err_fpga;
 	}
-	PT3_PRINTK(&pdev->dev, 7, KERN_DEBUG, "Allocate PT3_I2C.\n");
+	PT3_PRINTK(NULL, 7, KERN_DEBUG, "Allocate PT3_I2C.\n");
 	set_lnb(dev_conf, lnb_force ? lnb : 0);
 	// Tuner
 	for (lp = 0; lp < MAX_TUNER; lp++) {
@@ -972,14 +971,14 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 		tc_addr = pt3_tc_address(pin, PT3_ISDB_S, lp);
 		tuner_addr = pt3_qm_address(lp);
 
-		tuner->tc_s = create_pt3_tc(dev_conf->i2c, &pdev->dev, tc_addr, tuner_addr);
-		tuner->qm   = create_pt3_qm(dev_conf->i2c, tuner->tc_s, &pdev->dev);
+		tuner->tc_s = create_pt3_tc(dev_conf->i2c, NULL, tc_addr, tuner_addr);
+		tuner->qm   = create_pt3_qm(dev_conf->i2c, tuner->tc_s, NULL);
 
 		tc_addr = pt3_tc_address(pin, PT3_ISDB_T, lp);
 		tuner_addr = pt3_mx_address(lp);
 
-		tuner->tc_t = create_pt3_tc(dev_conf->i2c, &pdev->dev, tc_addr, tuner_addr);
-		tuner->mx   = create_pt3_mx(dev_conf->i2c, tuner->tc_t, &pdev->dev);
+		tuner->tc_t = create_pt3_tc(dev_conf->i2c, NULL, tc_addr, tuner_addr);
+		tuner->mx   = create_pt3_mx(dev_conf->i2c, tuner->tc_t, NULL);
 	}
 	PT3_PRINTK(NULL, 7, KERN_DEBUG, "Allocate tuners.\n");
 
