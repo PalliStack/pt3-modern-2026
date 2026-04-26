@@ -82,6 +82,13 @@ ls -l /dev/pt3video*
 dmesg | grep PT3
 ```
 
+## 🛠️ Bug Fixes & Improvements (バグ修正と改善)
+
+- **Fixed Device Node Creation:** Resolved issues where `/dev/pt3video*` nodes were not automatically created in multi-card environments.
+- **Added `card_number` Parameter:** Enabled manual indexing offset for flexible device management.
+- **Robust Resource Cleanup:** Fixed a logic bug that prevented cleaning up device slots upon failed hardware probes.
+- **Improved DMA Stability:** Optimized buffer allocation logic to better handle contiguous memory fragmentation.
+
 ## 📜 Acknowledgments
 This project is a **modernized fork** of the original [m-tsudo/pt3](https://github.com/m-tsudo/pt3). 
 

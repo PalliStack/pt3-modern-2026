@@ -97,13 +97,16 @@ MODULE_LICENSE("GPL");
 int debug = 0;		// 1 normal messages, 0 quiet .. 7 verbose
 static int lnb = 0;	// LNB OFF:0 +11V:1 +15V:2
 static int lnb_force = 0; // Force enable LNB
+static int card_number = 0; // Card number offset
 
 module_param(debug, int, S_IRUGO | S_IWUSR);
 module_param(lnb, int, 0);
 module_param(lnb_force, int, 0);
-MODULE_PARM_DESC(debug, "debug lvel (0-7)");
+module_param(card_number, int, 0);
+MODULE_PARM_DESC(debug, "debug level (0-7)");
 MODULE_PARM_DESC(lnb, "LNB level (0:OFF 1:+11V 2:+15V)");
 MODULE_PARM_DESC(lnb_force, "Force enable LNB");
+MODULE_PARM_DESC(card_number, "Card number offset (default 0)");
 
 #define VENDOR_ALTERA 0x1172
 #define PCI_PT3_ID    0x4c15
@@ -174,6 +177,7 @@ static int channel_type[MAX_CHANNEL] = {PT3_ISDB_S, PT3_ISDB_S, PT3_ISDB_T, PT3_
 
 static	PT3_DEVICE	*device[MAX_PCI_DEVICE];
 static struct class	*pt3video_class;
+static dev_t pt3video_dev;
 
 static int
 check_fpga_version(PT3_DEVICE *dev_conf)
@@ -994,11 +998,8 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 		}
 	}
 
-	rc =alloc_chrdev_region(&dev_conf->dev, 0, MAX_CHANNEL, DEV_NAME);
-	if (rc < 0)
-		goto out_err_i2c;
-	minor = MINOR(dev_conf->dev) ;
-	dev_conf->base_minor = minor ;
+	dev_conf->dev = MKDEV(MAJOR(pt3video_dev), MINOR(pt3video_dev) + (dev_conf->card_number + card_number) * MAX_CHANNEL);
+	dev_conf->base_minor = MINOR(dev_conf->dev);
 	for (lp = 0; lp < MAX_CHANNEL; lp++) {
 		cdev_init(&dev_conf->cdev[lp], &pt3_fops);
 		dev_conf->cdev[lp].owner = THIS_MODULE;
@@ -1039,7 +1040,7 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 				NULL,
 #endif
 				DEV_NAME "%u",
-				MINOR(dev_conf->dev) + lp + (dev_conf->card_number * MAX_CHANNEL));
+				MINOR(dev_conf->dev) + lp);
 	}
 
 	pci_set_drvdata(pdev, dev_conf);
@@ -1055,6 +1056,7 @@ out_err_dma:
 					MKDEV(MAJOR(dev_conf->dev), (MINOR(dev_conf->dev) + lp)));
 		}
 	}
+	device[dev_conf->card_number] = NULL;
 out_err_i2c:
 	for (lp = 0; lp < MAX_TUNER; lp++) {
 		tuner = &dev_conf->tuner[lp];
@@ -1121,7 +1123,7 @@ pt3_pci_remove_one(struct pci_dev *pdev)
 		pt3_i2c_reset(dev_conf->i2c);
 		free_pt3_i2c(dev_conf->i2c);
 
-		unregister_chrdev_region(dev_conf->dev, MAX_CHANNEL);
+		// unregister_chrdev_region is moved to cleanup
 		if (dev_conf->hw_addr[0])
 			iounmap(dev_conf->hw_addr[0]);
 		if (dev_conf->hw_addr[1])
@@ -1163,6 +1165,7 @@ static struct pci_driver pt3_driver = {
 static int __init
 pt3_pci_init(void)
 {
+	int rc;
 	PT3_PRINTK(NULL, 0, KERN_INFO, "%s", version);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6,4,0)
 	pt3video_class = class_create(THIS_MODULE, DRV_CLASS);
@@ -1171,6 +1174,13 @@ pt3_pci_init(void)
 #endif
 	if (IS_ERR(pt3video_class))
 		return PTR_ERR(pt3video_class);
+
+	rc = alloc_chrdev_region(&pt3video_dev, 0, MAX_PCI_DEVICE * MAX_CHANNEL, DEV_NAME);
+	if (rc < 0) {
+		class_destroy(pt3video_class);
+		return rc;
+	}
+
 	return pci_register_driver(&pt3_driver);
 }
 
@@ -1178,6 +1188,7 @@ static void __exit
 pt3_pci_cleanup(void)
 {
 	pci_unregister_driver(&pt3_driver);
+	unregister_chrdev_region(pt3video_dev, MAX_PCI_DEVICE * MAX_CHANNEL);
 	class_destroy(pt3video_class);
 }
 
