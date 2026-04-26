@@ -7,6 +7,5 @@ Module.symvers
 .tmp_versions/
 legacy_backup/
 *.env
-harness.sh
 pt3_drv.mod
 pt3_drv.ko

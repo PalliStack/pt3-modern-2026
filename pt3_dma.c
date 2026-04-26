@@ -431,7 +431,7 @@ create_pt3_dma(struct pci_dev *hwdev, PT3_I2C *i2c, int real_index)
 		page->data_pos = 0;
 		page->data = dma_alloc_coherent(&hwdev->dev, page->size, &page->addr, GFP_KERNEL);
 		if (page->data == NULL) {
-			PT3_PRINTK(&hwdev->dev, 0, KERN_ERR, "fail allocate consistent. %d\n", i);
+			PT3_PRINTK(&hwdev->dev, 0, KERN_ERR, "fail dma_alloc_coherent. %d\n", i);
 			goto fail;
 		}
 	}
@@ -449,7 +449,7 @@ create_pt3_dma(struct pci_dev *hwdev, PT3_I2C *i2c, int real_index)
 		page->data_pos = 0;
 		page->data = dma_alloc_coherent(&hwdev->dev, page->size, &page->addr, GFP_KERNEL);
 		if (page->data == NULL) {
-			PT3_PRINTK(&hwdev->dev, 0, KERN_ERR, "fail allocate consistent. %d\n", i);
+			PT3_PRINTK(&hwdev->dev, 0, KERN_ERR, "fail dma_alloc_coherent. %d\n", i);
 			goto fail;
 		}
 	}

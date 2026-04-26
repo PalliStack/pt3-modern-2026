@@ -122,7 +122,7 @@ static	DEFINE_MUTEX(pt3_biglock);
 
 #define DRV_CLASS	"ptx"
 #define DEV_NAME	"pt3video"
-#define MAX_PCI_DEVICE 128		// ?��?4??
+#define MAX_PCI_DEVICE 128		// ?鸚?4??
 typedef struct _PT3_VERSION {
 	__u8		ptn;
 	__u8 		regs;
@@ -158,6 +158,8 @@ typedef struct	_pt3_device{
 	PT3_I2C	*i2c;
 	PT3_TUNER	tuner[MAX_TUNER];
 	PT3_CHANNEL	*channel[MAX_CHANNEL];
+	int		irq;
+	int		num_irqs;
 } PT3_DEVICE;
 
 struct _PT3_CHANNEL {
@@ -881,6 +883,14 @@ static const struct file_operations pt3_fops = {
 #endif
 };
 
+static irqreturn_t pt3_irq_handler(int irq, void *dev_id)
+{
+	// PT3 currently uses a polling mechanism for DMA completion.
+	// We register this handler primarily to satisfy IOMMU/Interrupt Remapping
+	// requirements on modern HP servers and kernels.
+	return IRQ_HANDLED;
+}
+
 static int __devinit
 pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 {
@@ -924,7 +934,7 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 	dev_conf->pdev = pdev;
 	PT3_PRINTK(NULL, 7, KERN_DEBUG, "Allocate PT3_DEVICE.\n");
 
-	// PCI?�ド?�ス?�マ?�プ?�る
+	// PCI?㏂깋?с궧?믡깯?껁깤?쇻굥
 	dev_conf->bars = bars;
 	dev_conf->hw_addr[0] = pci_ioremap_bar(pdev, 0);
 	if (!dev_conf->hw_addr[0])
@@ -932,20 +942,28 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 	dev_conf->hw_addr[1] = pci_ioremap_bar(pdev, 2);
 	if (!dev_conf->hw_addr[1])
 		goto out_err_fpga;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,18,0)
-	rc = dma_set_mask(&pdev->dev, DMA_BIT_MASK(64));
-#else
-	rc = pci_set_dma_mask(pdev, DMA_BIT_MASK(64));
-#endif
-	if (!rc) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,18,0)
-		rc = dma_set_coherent_mask(NULL, DMA_BIT_MASK(64));
-#else
-		rc = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(64));
-#endif
-	}
+	rc = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
 	if (rc) {
-		PT3_PRINTK(NULL, 0, KERN_ERR, "DMA MASK ERROR\n");
+		rc = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
+		if (rc) {
+			PT3_PRINTK(&pdev->dev, 0, KERN_ERR, "DMA MASK ERROR\n");
+			goto out_err_fpga;
+		}
+	}
+
+	// Modern Interrupt Allocation (MSI/MSI-X support for IOMMU compatibility)
+	rc = pci_alloc_irq_vectors(pdev, 1, 1, PCI_IRQ_ALL_TYPES);
+	if (rc < 0) {
+		PT3_PRINTK(&pdev->dev, 0, KERN_ERR, "fail pci_alloc_irq_vectors\n");
+		goto out_err_fpga;
+	}
+	dev_conf->num_irqs = rc;
+	dev_conf->irq = pci_irq_vector(pdev, 0);
+
+	rc = request_irq(dev_conf->irq, pt3_irq_handler, 0, DRV_NAME, dev_conf);
+	if (rc) {
+		PT3_PRINTK(&pdev->dev, 0, KERN_ERR, "fail request_irq\n");
+		pci_free_irq_vectors(pdev);
 		goto out_err_fpga;
 	}
 
@@ -1128,6 +1146,10 @@ pt3_pci_remove_one(struct pci_dev *pdev)
 		if (dev_conf->hw_addr[1])
 			iounmap(dev_conf->hw_addr[1]);
 		pci_release_selected_regions(pdev, dev_conf->bars);
+		if (dev_conf->irq) {
+			free_irq(dev_conf->irq, dev_conf);
+			pci_free_irq_vectors(pdev);
+		}
 		device[dev_conf->card_number] = NULL;
 		kfree(dev_conf);
 		PT3_PRINTK(NULL, 0, KERN_DEBUG, "free PT3 DEVICE.\n");

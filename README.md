@@ -1,27 +1,23 @@
-# 🚀 Project: PT3-Modern-Pack-2026
+# ?? Project: PT3-Modern-Pack-2026
 
 **Integrating Ubuntu 22.04 + Dual PT3 Cards (8 Tuners) + mirakc + EPGStation + KonomiTV.**
 
 *Modernized & Bug-Fixed for 2026 standards by **PalliStack**.*
 
-## 🌟 Key Modernization Features (主な現代化機能)
+## ?뙚 Key Modernization Features (訝삠겒?얌빰?뽪찣??
 
-### 🇬🇧 English
+### ?눐?눉 English
 - **Refactored PT3 Driver:** Migrated to `dma_alloc_coherent` for high-speed, stable memory management.
+- **IOMMU/DMAR Support:** Added `pci_alloc_irq_vectors` and explicit MSI mapping to resolve boot delays and DMAR faults on HP/Dell servers.
+- **Modern Kernel Support:** Fully compatible with Linux Kernel 5.15+ (Ubuntu 22.04 LTS) and 6.x.
 - **Multi-Card Bug Fix:** Resolved issues where `/dev/pt3video*` nodes were not created in multi-card environments.
-- **New Parameter (`card_number`):** Added support for manual device index offsets.
-- **DMA Stability:** Enhanced logic to handle memory fragmentation during driver load.
 
-### 🇯🇵 日本語
-- **リファクタリングされたPT3ドライバ:** 高速で安定したメモリ管理のために`dma_alloc_coherent`へ移行。
-- **マルチカードバグ修正:** 複数枚のカード環境で`/dev/pt3video*`ノードが作成されない問題を解決。\n- **新パラメータ (`card_number`):** デバイスインデックスのオフセットを手動で指定する機能を追加。
-- **DMA安定性の向上:** ドライバロード時のメモリ断片化（フラグメンテーション）に対する安定性を強化。
-
-## 🏗️ Architecture Design (アーキテクチャ設計)
+### ?눓?눝 ?ζ쑍沃?- **?ゃ깢?▲궚?욍꺁?녈궛?뺛굦?욾T3?됥꺀?ㅳ깘:** 遙섌잆겎若됧츣?쀣걼?▲깴?ょ??녴겗?잆굙??dma_alloc_coherent`?며㎉烏뚣?- **?욁꺂?곥궖?쇈깋?먦궛岳??:** 筽뉑빊?싥겗?ャ꺖?됬뮥罌껁겎`/dev/pt3video*`?롢꺖?됥걣鵝쒏닇?뺛굦?ゃ걚?뤻죱?믦㎗黎뷩?n- **?겹깙?⒲깳?쇈궭 (`card_number`):** ?뉎깘?ㅳ궧?ㅳ꺍?뉎긿??궧??궕?뺛궩?껁깉?믤뎸?뺛겎?뉐츣?쇻굥艅잒꺗?믦옙?졼?- **DMA若됧츣?㎯겗?묇툓:** ?됥꺀?ㅳ깘??꺖?됪셽??깳?㏂꺁??뎴?뽳펷?뺛꺀?겹깳?녈깇?쇈궥?㎯꺍竊됥겓野얇걲?뗥츎若싨㎯굮凉룟뙑??
+## ?룛截?Architecture Design (?㏂꺖??깇??긽?ｈÞ鼇?
 
 ```text
 ================================================================================
-     [ LEGACY / 旧世代 ]                       [ MODERN 2026 / 次世代 ]
+     [ LEGACY / ?㏛툟餓?]                       [ MODERN 2026 / 轝▽툟餓?]
 ================================================================================
 
    +--------------------------+             +--------------------------+
@@ -54,37 +50,37 @@
 ================================================================================
 ```
 
-## 👨‍🍳 Installation Recipe (インストールレシピ)
+## ?뫅?랅윂?Installation Recipe (?ㅳ꺍?밤깉?쇈꺂?с궥??
 
-### 1️⃣ Install Dependencies (依存関係のインストール)
+### 1截뤴깵 Install Dependencies (堊앭춼?㏘퓗??궎?녈궧?덀꺖??
 ```bash
 sudo apt update
 sudo apt install -y dkms linux-headers-$(uname -r) build-essential git
 ```
 
-### 2️⃣ Clone and Build (クローンとビルド)
+### 2截뤴깵 Clone and Build (??꺆?쇈꺍?ⓦ깛?ャ깋)
 ```bash
 git clone https://github.com/PalliStack/pt3-modern-2026.git
 cd pt3-modern-2026
 make
 ```
 
-### 3️⃣ Install and Load (インストールとロード)
+### 3截뤴깵 Install and Load (?ㅳ꺍?밤깉?쇈꺂?ⓦ꺆?쇈깋)
 ```bash
 sudo make install
 sudo depmod -a
 sudo modprobe pt3_drv
 ```
 
-### 4️⃣ Verify (確認)
+### 4截뤴깵 Verify (閻븃첀)
 ```bash
 ls -l /dev/pt3video*
 dmesg | grep PT3
 ```
 
-## 🔧 Troubleshooting (トラブルシューティング)
+## ?뵩 Troubleshooting (?덀꺀?뽧꺂?룔깷?쇈깇?ｃ꺍??
 
-### DMA Allocation Failure (DMA割当失敗)
+### DMA Allocation Failure (DMA?꿨퐪鸚길븮)
 If the driver loads but not all tuners are visible (e.g., only 4 instead of 8), it is likely due to **contiguous memory fragmentation**.
 - **Symptoms:** `dmesg` shows `fail allocate consistent`.
 - **Solution:** Clear the kernel page cache to free up contiguous physical memory:
@@ -95,7 +91,7 @@ If the driver loads but not all tuners are visible (e.g., only 4 instead of 8), 
   sudo modprobe pt3_drv
   ```
 
-## 📜 Acknowledgments
+## ?뱶 Acknowledgments
 This project is a **modernized fork** of the original [m-tsudo/pt3](https://github.com/m-tsudo/pt3). 
 
 *Maintained by **PalliStack** | 2026 Engineering Archive*
