@@ -42,16 +42,24 @@ extern int debug;
 
 static inline int pt3_copy_from_user(void *to, const void __user *from, unsigned long n)
 {
-    if (unlikely(!access_ok(from, n)))
-        return -EFAULT;
-    return copy_from_user(to, from, n);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,0,0)
+	if (unlikely(!access_ok(VERIFY_READ, from, n)))
+#else
+	if (unlikely(!access_ok(from, n)))
+#endif
+		return -EFAULT;
+	return copy_from_user(to, from, n);
 }
 
 static inline int pt3_copy_to_user(void __user *to, const void *from, unsigned long n)
 {
-    if (unlikely(!access_ok(to, n)))
-        return -EFAULT;
-    return copy_to_user(to, from, n);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,0,0)
+	if (unlikely(!access_ok(VERIFY_WRITE, to, n)))
+#else
+	if (unlikely(!access_ok(to, n)))
+#endif
+		return -EFAULT;
+	return copy_to_user(to, from, n);
 }
 
 #define REGS_VERSION	0x00	/*	R		Version */

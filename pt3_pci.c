@@ -116,9 +116,7 @@ static struct pci_device_id pt3_pci_tbl[] = {
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, pt3_pci_tbl);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)
-static	DEFINE_MUTEX(pt3_biglock);
-#endif
+
 
 #define DRV_CLASS	"ptx"
 #define DEV_NAME	"pt3video"
@@ -263,6 +261,7 @@ static STATUS
 get_tmcc_t(PT3_TUNER *tuner, TMCC_T *tmcc)
 {
 	int b, retryov, tmunvld, fulock;
+	unsigned long timeout = jiffies + msecs_to_jiffies(100);
 
 	if (unlikely(tmcc == NULL))
 		return STATUS_INVALID_PARAM_ERROR;
@@ -277,7 +276,11 @@ get_tmcc_t(PT3_TUNER *tuner, TMCC_T *tmcc)
 			if (retryov)
 				break;
 		}
-		schedule_timeout_interruptible(msecs_to_jiffies(1));	
+		if (time_after(jiffies, timeout)) {
+			PT3_PRINTK(NULL, 1, KERN_ERR, "get_tmcc_t timeout\n");
+			break;
+		}
+		schedule_timeout_interruptible(msecs_to_jiffies(1));
 	}
 
 	if (likely(b))
@@ -801,14 +804,21 @@ pt3_do_ioctl(struct file  *file, unsigned int cmd, unsigned long arg0)
 		schedule_timeout_interruptible(msecs_to_jiffies(10));	
 		pt3_dma_set_enabled(channel->dma, 1);
 		schedule_timeout_interruptible(msecs_to_jiffies(10));	
-		while (1) {
-			status = (int)pt3_dma_get_status(channel->dma);
-			PT3_PRINTK(NULL, 7, KERN_DEBUG, "status = 0x%x\n", status);
-			if ((status & 0x01) == 0)
-				break;
-			if ((status >> 24) != 0x47)
-				break;
-			schedule_timeout_interruptible(msecs_to_jiffies(1));	
+		{
+			unsigned long timeout = jiffies + msecs_to_jiffies(100);
+			while (1) {
+				status = (int)pt3_dma_get_status(channel->dma);
+				PT3_PRINTK(NULL, 7, KERN_DEBUG, "status = 0x%x\n", status);
+				if ((status & 0x01) == 0)
+					break;
+				if ((status >> 24) != 0x47)
+					break;
+				if (time_after(jiffies, timeout)) {
+					PT3_PRINTK(NULL, 1, KERN_ERR, "SET_TEST_MODE_ON status timeout\n");
+					break;
+				}
+				schedule_timeout_interruptible(msecs_to_jiffies(1));
+			}
 		}
 		dma_look_ready[channel->dma->real_index] = 0;
 		return 0;
@@ -831,21 +841,14 @@ static long
 pt3_unlocked_ioctl(struct file  *file, unsigned int cmd, unsigned long arg0)
 {
 	long ret;
+	PT3_CHANNEL *channel = file->private_data;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)
-	if(mutex_lock_interruptible(&pt3_biglock))
+	if(mutex_lock_interruptible(&channel->ptr->lock))
 		return -EINTR ;
-#else
-	lock_kernel();
-#endif
 
 	ret = pt3_do_ioctl(file, cmd, arg0);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)
-	mutex_unlock(&pt3_biglock);
-#else
-	unlock_kernel();
-#endif
+	mutex_unlock(&channel->ptr->lock);
 
 	return ret;
 }
@@ -922,14 +925,16 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 	if ((class_revision & 0xFF) != 1) {
 		PT3_PRINTK(NULL, 0, KERN_ERR, "Revision %x is not supported\n",
 				(class_revision & 0xFF));
-		goto out_err_reg;
+		rc = -EIO;
+		goto err_regions;
 	}
 	PT3_PRINTK(NULL, 7, KERN_DEBUG, "Revision 0x%x passed\n", class_revision & 0xff);
 
 	dev_conf = kzalloc(sizeof(PT3_DEVICE), GFP_KERNEL);
 	if(!dev_conf){
 		dev_err(NULL, "PT3: out of memory!\n");
-		goto out_err_reg;
+		rc = -ENOMEM;
+		goto err_regions;
 	}
 	dev_conf->pdev = pdev;
 	PT3_PRINTK(NULL, 7, KERN_DEBUG, "Allocate PT3_DEVICE.\n");
@@ -937,17 +942,21 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 	// PCI?㏂깋?с궧?믡깯?껁깤?쇻굥
 	dev_conf->bars = bars;
 	dev_conf->hw_addr[0] = pci_ioremap_bar(pdev, 0);
-	if (!dev_conf->hw_addr[0])
-		goto out_err_fpga;
+	if (!dev_conf->hw_addr[0]) {
+		rc = -EIO;
+		goto err_kzalloc;
+	}
 	dev_conf->hw_addr[1] = pci_ioremap_bar(pdev, 2);
-	if (!dev_conf->hw_addr[1])
-		goto out_err_fpga;
+	if (!dev_conf->hw_addr[1]) {
+		rc = -EIO;
+		goto err_iomap;
+	}
 	rc = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(64));
 	if (rc) {
 		rc = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
 		if (rc) {
 			PT3_PRINTK(&pdev->dev, 0, KERN_ERR, "DMA MASK ERROR\n");
-			goto out_err_fpga;
+			goto err_iomap;
 		}
 	}
 
@@ -955,7 +964,7 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 	rc = pci_alloc_irq_vectors(pdev, 1, 1, PCI_IRQ_ALL_TYPES);
 	if (rc < 0) {
 		PT3_PRINTK(&pdev->dev, 0, KERN_ERR, "fail pci_alloc_irq_vectors\n");
-		goto out_err_fpga;
+		goto err_iomap;
 	}
 	dev_conf->num_irqs = rc;
 	dev_conf->irq = pci_irq_vector(pdev, 0);
@@ -963,18 +972,19 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 	rc = request_irq(dev_conf->irq, pt3_irq_handler, 0, DRV_NAME, dev_conf);
 	if (rc) {
 		PT3_PRINTK(&pdev->dev, 0, KERN_ERR, "fail request_irq\n");
-		pci_free_irq_vectors(pdev);
-		goto out_err_fpga;
+		goto err_alloc_irq;
 	}
 
 	if(check_fpga_version(dev_conf)){
-		goto out_err_fpga;
+		rc = -EIO;
+		goto err_request_irq;
 	}
 	mutex_init(&dev_conf->lock);
 	dev_conf->i2c = create_pt3_i2c(NULL, dev_conf->hw_addr);
 	if (dev_conf->i2c == NULL) {
 		dev_err(NULL, "PT3: cannot allocate i2c.\n");
-		goto out_err_fpga;
+		rc = -ENOMEM;
+		goto err_request_irq;
 	}
 	PT3_PRINTK(NULL, 7, KERN_DEBUG, "Allocate PT3_I2C.\n");
 	set_lnb(dev_conf, lnb_force ? lnb : 0);
@@ -1003,20 +1013,25 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 	rc = init_all_tuner(dev_conf);
 	if (rc) {
 		PT3_PRINTK(NULL, 0, KERN_ERR, "fail init_all_tuner. 0x%x\n", rc);
-		goto out_err_i2c;
+		goto err_init_tuner;
 	}
 
 	for(lp = 0 ; lp < MAX_PCI_DEVICE ; lp++){
-		PT3_PRINTK(NULL, 0, KERN_INFO, "device[%d]=%p\n", lp, device[lp]);
 		if(device[lp] == NULL){
 			device[lp] = dev_conf ;
 			dev_conf->card_number = lp;
 			break ;
 		}
 	}
+	if (lp == MAX_PCI_DEVICE) {
+		PT3_PRINTK(NULL, 0, KERN_ERR, "too many PCI devices\n");
+		rc = -ENOMEM;
+		goto err_init_tuner;
+	}
 
 	dev_conf->dev = MKDEV(MAJOR(pt3video_dev), MINOR(pt3video_dev) + (dev_conf->card_number + card_number) * MAX_CHANNEL);
 	dev_conf->base_minor = MINOR(dev_conf->dev);
+
 	for (lp = 0; lp < MAX_CHANNEL; lp++) {
 		cdev_init(&dev_conf->cdev[lp], &pt3_fops);
 		dev_conf->cdev[lp].owner = THIS_MODULE;
@@ -1024,19 +1039,24 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 			MKDEV(MAJOR(dev_conf->dev), (MINOR(dev_conf->dev) + lp)), 1);
 		if (rc < 0) {
 			PT3_PRINTK(NULL, 0, KERN_ERR, "fail cdev_add.\n");
+			goto err_cdev_del;
 		}
 
 		channel = kzalloc(sizeof(PT3_CHANNEL), GFP_KERNEL);
 		if (channel == NULL) {
 			PT3_PRINTK(NULL, 0, KERN_ERR, "out of memory!\n");
-			goto out_err_dma;
+			rc = -ENOMEM;
+			lp++; 
+			goto err_cdev_del;
 		}
 
 		channel->dma = create_pt3_dma(pdev, dev_conf->i2c, real_channel[lp]);
 		if (channel->dma == NULL) {
 			PT3_PRINTK(NULL, 0, KERN_ERR, "fail create dma.\n");
 			kfree(channel);
-			goto out_err_dma;
+			rc = -ENOMEM;
+			lp++; 
+			goto err_cdev_del;
 		}
 
 		mutex_init(&channel->lock);
@@ -1048,8 +1068,6 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 
 		dev_conf->channel[lp] = channel;
 
-		PT3_PRINTK(NULL, 0, KERN_INFO, "card_number=%d channel=%d\n",
-					dev_conf->card_number, real_channel[lp]);
 		device_create(pt3video_class,
 				NULL,
 				MKDEV(MAJOR(dev_conf->dev), (MINOR(dev_conf->dev) + lp)),
@@ -1063,18 +1081,20 @@ pt3_pci_init_one (struct pci_dev *pdev, const struct pci_device_id *ent)
 	pci_set_drvdata(pdev, dev_conf);
 	return 0;
 
-out_err_dma:
-	for (lp = 0; lp < MAX_CHANNEL; lp++) {
-		if (dev_conf->channel[lp] != NULL) {
-			if (dev_conf->channel[lp]->dma != NULL)
+err_cdev_del:
+	while (lp-- > 0) {
+		cdev_del(&dev_conf->cdev[lp]);
+		device_destroy(pt3video_class,
+				MKDEV(MAJOR(dev_conf->dev), (MINOR(dev_conf->dev) + lp)));
+		if (dev_conf->channel[lp]) {
+			if (dev_conf->channel[lp]->dma)
 				free_pt3_dma(pdev, dev_conf->channel[lp]->dma);
 			kfree(dev_conf->channel[lp]);
-			device_destroy(pt3video_class,
-					MKDEV(MAJOR(dev_conf->dev), (MINOR(dev_conf->dev) + lp)));
 		}
 	}
 	device[dev_conf->card_number] = NULL;
-out_err_i2c:
+
+err_init_tuner:
 	for (lp = 0; lp < MAX_TUNER; lp++) {
 		tuner = &dev_conf->tuner[lp];
 		free_pt3_tc(tuner->tc_s);
@@ -1083,17 +1103,27 @@ out_err_i2c:
 		free_pt3_mx(tuner->mx);
 	}
 	free_pt3_i2c(dev_conf->i2c);
-out_err_fpga:
+
+err_request_irq:
+	free_irq(dev_conf->irq, dev_conf);
+err_alloc_irq:
+	pci_free_irq_vectors(pdev);
+
+err_iomap:
 	if (dev_conf->hw_addr[0])
 		iounmap(dev_conf->hw_addr[0]);
 	if (dev_conf->hw_addr[1])
 		iounmap(dev_conf->hw_addr[1]);
+
+err_kzalloc:
 	kfree(dev_conf);
-out_err_reg:
+
+err_regions:
 	pci_release_selected_regions(pdev, bars);
-out_err_pci:
+
+err_pci:
 	pci_disable_device(pdev);
-	return -EIO;
+	return rc;
 }
 
 static void __devexit

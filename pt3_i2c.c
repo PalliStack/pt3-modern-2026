@@ -40,38 +40,46 @@
 
 #define DATA_OFFSET 2048
 
-static void
+static STATUS
 wait(PT3_I2C *i2c, __u32 *data)
 {
 	__u32 val;
-	
+	unsigned long timeout = jiffies + msecs_to_jiffies(100);
+
 	while (1) {
 		val = readl(i2c->bar[0] + REGS_I2C_R);
 		if (!BIT_SHIFT_MASK(val, 0, 1))
 			break;
-		schedule_timeout_interruptible(msecs_to_jiffies(1));	
+		if (time_after(jiffies, timeout)) {
+			PT3_PRINTK(i2c->dev, 0, KERN_ERR, "I2C wait timeout\n");
+			return STATUS_I2C_ERROR;
+		}
+		schedule_timeout_interruptible(msecs_to_jiffies(1));
 	}
 
 	if (data != NULL)
 		*data = val;
+	return STATUS_OK;
 }
 
 static STATUS
 run_code(PT3_I2C *i2c, __u32 start_addr, __u32 *ack)
 {
 	__u32 data, a;
+	STATUS status;
 
-	wait(i2c, &data);
+	status = wait(i2c, &data);
+	if (status)
+		return status;
 
 	if (unlikely(start_addr >= (1 << 13)))
 		PT3_PRINTK(i2c->dev, 0, KERN_DEBUG, "start address is over.\n");
 	
 	writel(1 << 16 | start_addr, i2c->bar[0] + REGS_I2C_W);
-#if 0
-	PT3_PRINTK(i2c->dev, 7, KERN_DEBUG, "run i2c start_addr=0x%x\n", start_addr);
-#endif
 
-	wait(i2c, &data);
+	status = wait(i2c, &data);
+	if (status)
+		return status;
 
 	a = BIT_SHIFT_MASK(data, 1, 2);
 	if (ack != NULL)

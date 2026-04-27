@@ -256,12 +256,17 @@ pt3_dma_set_enabled(PT3_DMA *dma, int enabled)
 				BIT_SHIFT_MASK(start_addr, 32, 32));
 		writel( 1 << 0, base + 0x08);
 	} else {
+		unsigned long timeout = jiffies + msecs_to_jiffies(100);
 		PT3_PRINTK(&dma->pdev->dev, 7, KERN_DEBUG, "disable dma real_index=%d\n", dma->real_index);
 		writel(1 << 1, base + 0x08);
 		while (1) {
 			data = readl(base + 0x10);
 			if (!BIT_SHIFT_MASK(data, 0, 1))
 				break;
+			if (time_after(jiffies, timeout)) {
+				PT3_PRINTK(&dma->pdev->dev, 0, KERN_ERR, "disable DMA timeout real_index=%d\n", dma->real_index);
+				break;
+			}
 			schedule_timeout_interruptible(msecs_to_jiffies(1));
 		}
 	}
@@ -431,7 +436,7 @@ create_pt3_dma(struct pci_dev *hwdev, PT3_I2C *i2c, int real_index)
 		page->data_pos = 0;
 		page->data = dma_alloc_coherent(&hwdev->dev, page->size, &page->addr, GFP_KERNEL);
 		if (page->data == NULL) {
-			PT3_PRINTK(&hwdev->dev, 0, KERN_ERR, "fail dma_alloc_coherent. %d\n", i);
+			dev_err(&hwdev->dev, "PT3: fail dma_alloc_coherent (TS buffer) index %d size %u\n", i, page->size);
 			goto fail;
 		}
 	}
@@ -449,7 +454,7 @@ create_pt3_dma(struct pci_dev *hwdev, PT3_I2C *i2c, int real_index)
 		page->data_pos = 0;
 		page->data = dma_alloc_coherent(&hwdev->dev, page->size, &page->addr, GFP_KERNEL);
 		if (page->data == NULL) {
-			PT3_PRINTK(&hwdev->dev, 0, KERN_ERR, "fail dma_alloc_coherent. %d\n", i);
+			dev_err(&hwdev->dev, "PT3: fail dma_alloc_coherent (Desc buffer) index %d size %u\n", i, page->size);
 			goto fail;
 		}
 	}
@@ -475,16 +480,20 @@ free_pt3_dma(struct pci_dev *hwdev, PT3_DMA *dma)
 	if (dma->ts_info != NULL) {
 		for (i = 0; i < dma->ts_count; i++) {
 			page = &dma->ts_info[i];
-			if (page->size != 0)
+			if (page->data != NULL && page->size != 0) {
 				dma_free_coherent(&hwdev->dev, page->size, page->data, page->addr);
+				page->data = NULL;
+			}
 		}
 		kfree(dma->ts_info);
 	}
 	if (dma->desc_info != NULL) {
 		for (i = 0; i < dma->desc_count; i++) {
 			page = &dma->desc_info[i];
-			if (page->size != 0)
+			if (page->data != NULL && page->size != 0) {
 				dma_free_coherent(&hwdev->dev, page->size, page->data, page->addr);
+				page->data = NULL;
+			}
 		}
 		kfree(dma->desc_info);
 	}
